@@ -18,3 +18,7 @@ There also provide the signal quality result of patient number 02&04 in the cspc
 The model was developed by Xiangyu Zhang （230179249@seu.edu.cn, Southeast University, China）. 
 
 Further details will be seen in our paper--"Deep-learning based signal quality assessment for wearable ECGs".
+
+
+# Training Dataset
+https://physionet.org/content/challenge-2011/1.0.0/
