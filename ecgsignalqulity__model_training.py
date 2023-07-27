@@ -102,10 +102,10 @@ class Recurrent_block(nn.Module):
         for i in range(self.t):
             if i == 0:
                 x1 = self.conv(x)
-            out = self.conv1_1(x1 + x)
+            out = self.conv1_1(x1 + x)   # out variable ta x1 howar kotha chilo na??
         return out
     
-class Residual_block(nn.Module):
+class Residual_block(nn. Module):
 
     def __init__(self, out_ch, t=2):
         super(Residual_block, self).__init__()
@@ -145,14 +145,13 @@ class R_1Dcnn_RCNN_block(nn.Module):
         self.RCNN3 =nn.Sequential(
             Residual_block(out_ch, out_ch))
 
-        
         self.Conv = nn.Conv1d(in_ch, out_ch, kernel_size=1, stride=1, padding=0)
         self.Conv1_1 = nn.Sequential(
             nn.Conv1d(out_ch, out_ch, kernel_size=1, stride=1, padding=0, bias=True),
             nn.BatchNorm1d(out_ch),
             nn.ReLU())
     def forward(self, x):
-        x=self.Conv (x)
+        x=self.Conv(x)
         x1 = self.RCNN3(x)
         x2 = self.RCNN2(x)
         x3 = self.RCNN1(x)
@@ -199,17 +198,22 @@ class model_1d(nn.Module):
         self.RRCNN2 = R_1Dcnn_RCNN_block(filters[3], filters[2], t=t)
         self.RRCNN3 = R_1Dcnn_RCNN_block(filters[2], filters[2], t=t)
         self.Softmax = nn.LogSoftmax()
-        self.fc1 = nn.Linear(168 ,3)
+        self.fc1 = nn.Linear(168 ,2)
     def forward(self, x):
         x=self.Maxpool0(x)
         e1 = self.RRCNN1(x)
-        e2 = self.Maxpool2(e1)        
+        print(e1.size())
+        e2 = self.Maxpool2(e1)
+        print(e2.size())
         e2 = self.RRCNN2(e2)      
         e3 = self.Maxpool2(e2)
         e3 = self.RRCNN3(e3)
         e3 = self.Maxpool2(e3)
+        print(e3.size())
         e4=self.Maxpool2(e3)
+        print(e4.size())
         e7= e4.view(e4.size(0),e4.size(1)*e4.size(2))
+        print(e7.size())
         out = self.fc1(e7)
         out =self.Softmax(out)
         return out
@@ -235,11 +239,10 @@ def train(x,model,los_train, acc_train):
         running_loss+=loss.item()
         train_correct+=accracy
 
-        if i % np.ceil(len(trainloader.dataset)/128) == np.ceil(len(trainloader.dataset)/128)-1:    # print every 2000 mini-batches
-            print('[%d, %5d] loss: %.3f  train_acc:%.4f'%
-                  (epoch + 1, i + 1, running_loss /(len(trainloader.dataset)/128), train_correct/(len(trainloader.dataset)/128)))
-            los_train[j]= running_loss /(len(trainloader.dataset)/128)
-            acc_train[j]= train_correct/(len(trainloader.dataset)/128)                     
+        if i % np.ceil(len(trainloader.dataset)/32) == np.ceil(len(trainloader.dataset)/32)-1:    # print every 2000 mini-batches
+            print('[%d, %5d] loss: %.3f  train_acc:%.4f'%(epoch + 1, i + 1, running_loss /(len(trainloader.dataset)/32), train_correct/(len(trainloader.dataset)/32)))
+            los_train[j]= running_loss /(len(trainloader.dataset)/32)
+            acc_train[j]= train_correct/(len(trainloader.dataset)/32)
             running_loss = 0.0
             train_correct=0.0         
     return los_train, acc_train
@@ -255,7 +258,7 @@ def validation(j,model,los_test, acc_test):
         loss1 = criterion(output, torch.argmax(labels1, dim=1))
         test_loss+=loss1.item()
         test_correct+=accracy1
-     test_loss /= (len(testloader.dataset)/128)
+     test_loss /= (len(testloader.dataset)/32)
      test_correct/=(len(testloader.dataset))
      los_test[j]= test_loss
      acc_test[j]= test_correct
@@ -272,21 +275,29 @@ def test():
         loss1 = criterion(output, torch.argmax(labels1, dim=1))
         test_loss+=loss1.item()
         test_correct+=accracy1
-     test_loss /= (len(testloader.dataset)/128)
+     test_loss /= (len(testloader.dataset)/32)  # 32 is batch size
      test_correct/=(len(testloader.dataset))
      print('test_loss:%.4f, test_correct%.4f'%(test_loss,test_correct))     
 
 
-data=h5py.File('ecgs.mat')
-A=data['A']
-B=data['B']
-C=data['C']
+import pickle
+with open('training_dataset.pkl', 'rb') as f:
+     dataset = pickle.load(f)
 
-ecga=np.vstack((A,B,C))
-label1=np.zeros((3000,1))
-label2=np.zeros((3000,1))+1
-label3=np.zeros((3000,1))+2
-labela=np.vstack((label1,label2,label3))
+# data=h5py.File('ecgs.mat')
+
+# data=h5py.File('ecgs.mat')
+# A=data['A']
+# B=data['B']
+# C=data['C']
+
+# ecga=np.vstack((A,B,C))
+# label1=np.zeros((3000,1))
+# label2=np.zeros((3000,1))+1
+# label3=np.zeros((3000,1))+2
+ecga = dataset[:, 0:4000]
+# labela=np.vstack((label1,label2,label3))
+labela = dataset[:, -1].reshape(1996, 1)
 label1=[]
 label2=[]
 label3=[]
@@ -313,14 +324,14 @@ for traindata, testdata in sfolder.split(ecga,labela):
     labelc=to_categorical(labelc)
     labelc=torch.FloatTensor(labelc)
     deal_dataset = TensorDataset(ecgc,labelc)
-    trainloader=DataLoader(dataset=deal_dataset,batch_size=128,shuffle=True,num_workers=0)    
+    trainloader=DataLoader(dataset=deal_dataset,batch_size=32,shuffle=True,num_workers=0)
     
     ecgt=torch.FloatTensor(ecgt)
     ecgt=ecgt.unsqueeze(1)    
     labelt=to_categorical(labelt)
     labelt=torch.FloatTensor(labelt)
     deal_test_dataset = TensorDataset(ecgt,labelt)
-    testloader=DataLoader(dataset=deal_test_dataset,batch_size=128,shuffle=True,num_workers=0) 
+    testloader=DataLoader(dataset=deal_test_dataset,batch_size=32,shuffle=True,num_workers=0)
 
     model=model_1d()
     model = model.cuda()

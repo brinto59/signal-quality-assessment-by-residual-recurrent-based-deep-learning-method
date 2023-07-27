@@ -17,6 +17,8 @@ from keras.utils import to_categorical
 from sklearn.model_selection import StratifiedKFold
 from scipy.fftpack import fft, ifft
 import scipy.signal as signal
+
+# print(torch.cuda.is_available())
 def zscore(data):
     data_mean=np.mean(data)
     data_std=np.std(data, axis=0)
@@ -65,7 +67,7 @@ def hobalka(ecg1, fs, fmin, fmax):
     yy[end - lh - 1: end - 1] = np.multiply(ecg_fil[horni], hamwindow[0: int(np.floor(hamsize / 2))])
     ecg_fil = abs(ifft(yy)) * 2
     return ecg_fil
-#Êý¾Ý×¼±¸¼°Éú³ÉloaderÐÎÊ½   
+#ï¿½ï¿½ï¿½ï¿½×¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½loaderï¿½ï¿½Ê½   
 class  conv1d_inception_block(nn.Module):
     """
     Convolution Block 1d
@@ -153,9 +155,35 @@ class Residual_block(nn.Module):
         x1 = self.conv(x)
         x1 = self.conv(x1)
         out=self.conv1_1(x1+x)
-        return out  
-    
-    
+        return out
+
+
+class R_1Dcnn_RCNN_block(nn.Module):
+    def __init__(self, in_ch, out_ch, t=2):
+        super(R_1Dcnn_RCNN_block, self).__init__()
+
+        self.RCNN1 = nn.Sequential(
+            Recurrent_block(out_ch, t=t))
+
+        self.RCNN2 = nn.Sequential(
+            conv1d_inception_block(out_ch, out_ch))
+
+        self.RCNN3 = nn.Sequential(
+            Residual_block(out_ch, out_ch))
+
+        self.Conv = nn.Conv1d(in_ch, out_ch, kernel_size=1, stride=1, padding=0)
+        self.Conv1_1 = nn.Sequential(
+            nn.Conv1d(out_ch, out_ch, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm1d(out_ch),
+            nn.ReLU())
+
+    def forward(self, x):
+        x = self.Conv(x)
+        x1 = self.RCNN3(x)
+        x2 = self.RCNN2(x)
+        x3 = self.RCNN1(x)
+        out = self.Conv1_1(x3 + x2 + x1)
+        return out
     
 
 
@@ -239,9 +267,9 @@ class model_1d(nn.Module):
         #self.RRCNN3 = R_inception_RCNN_block(filters[2], filters[2], t=t)
         self.RRCNN3 = R_inception_RCNN_block(filters[2], filters[2], t=t)
         #self.RRCNN4 = RRCNN_block(filters[3], filters[1], t=t)
-        self.Attention_block=Attention_block_self( F_l=filters[2], F_int=2)
+        # self.Attention_block=Attention_block_self( F_l=filters[2], F_int=2)
         self.Softmax = nn.LogSoftmax()
-        self.fc1 = nn.Linear(168 ,3)
+        self.fc1 = nn.Linear(168,2)
         #self.fc2 = nn.Linear(3 ,3)
         #self.att= LinearSelfAttn()
         #self.fc2 = nn.Linear(24,1)
@@ -250,14 +278,12 @@ class model_1d(nn.Module):
         e1 = self.RRCNN1(x)
         #e1 = self.drop_layer(e1)
 
-        e2 = self.Maxpool2(e1) 
+        e2 = self.Maxpool2(e1)
          
         e2 = self.RRCNN2(e2)
         #e2 = self.drop_layer(e2)
         
         e3 = self.Maxpool2(e2)
-        
-        
         e3 = self.RRCNN3(e3)
         e3 = self.Maxpool2(e3)
         '''
@@ -269,12 +295,10 @@ class model_1d(nn.Module):
         e4= self.Maxpool2(e3)
         '''
         e4=self.Maxpool2(e3)
-
-        
         #e4 = self.Attention_block(x=e4)
-        
-        
-        e7= e4.view(e4.size(0),e4.size(1)*e4.size(2))
+        # print(e4.size(1))
+        # print(e4.size(2))
+        e7= e4.view(e4.size(0), e4.size(1)*e4.size(2))
         #e7=e4.view(-1, e4.view(-1).size(0))
         out = self.fc1(e7)
         #out = self.fc2(out)
@@ -293,7 +317,9 @@ def test(model,testloader):
      data=[]
      for inputs1, labels1 in testloader:
         inputs1, labels1 = Variable(inputs1.cuda()), Variable(labels1.cuda())
-        output =  model(inputs1)
+        # print(torch.cuda.is_initialized())
+        output = model(inputs1)
+
         data.append(inputs1.cpu().numpy())
         label.append(torch.argmax(labels1.cpu(),1).numpy())
         labelpredict.append(torch.argmax(output.cpu(),1))
@@ -301,33 +327,37 @@ def test(model,testloader):
      return labelpredict ,data
 
 
-data=h5py.File('ecgpart_04.mat')
+data=sio.loadmat('ecgpart_04.mat')
 ecga=data['ecgpart']
-
+print(len(ecga))
 #useless-------------------------------------------------------------
-label1=np.zeros((len(ecga)-6000,1))
-label2=np.zeros((3000,1))+1
-label3=np.zeros((3000,1))+2
+label1=np.zeros((len(ecga)-500,1))
+label2=np.zeros((250,1))+1
+label3=np.zeros((250,1))+2
 labelt=np.vstack((label1,label2,label3))
 #---------------------------------------------------------------------
-
-
+label=h5py.File('result_of_the_model&manully_labeled/CSPC2020label_04_by_manurally.mat')
+labelt = label['sqi'][0:500]
+print(labelt.shape)
 for FF1 in range(len(ecga)): 
     ecga[FF1,:]=butthigh(zscore(ecga[FF1,:]),400)
 ecgt=torch.FloatTensor(ecga)
-ecgt=ecgt.unsqueeze(1)    
+ecgt=ecgt.unsqueeze(1)
+
 labelt=to_categorical(labelt)
 labelt=torch.FloatTensor(labelt)
 deal_test_dataset = TensorDataset(ecgt,labelt)
-testloader=DataLoader(dataset=deal_test_dataset,batch_size=128,shuffle=False,num_workers=0) 
+
+testloader=DataLoader(dataset=deal_test_dataset,batch_size=32,shuffle=False,num_workers=0)
 modelname='trained_model_RRM.pkl'
 model=torch.load(modelname)
+# print(model)
 model.eval()
 labelpredict,testdata11=test(model,testloader)
 j1=[]
 for j in labelpredict:
     j2=j.numpy()
     j1.extend(j2)
-matname_result='2020label_04_result.mat'
+matname_result='2020label_04_result_trained_on_computer.mat'
 sio.savemat(matname_result,{"predict":j1})
 
