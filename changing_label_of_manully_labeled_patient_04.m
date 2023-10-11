@@ -4,6 +4,8 @@ l = length(sqi)
 for i = 1:l
     if sqi(i) == 2
         sqi(i) = 1;
+    elseif sqi(i) == 1
+        sqi(i) = 0;
     end
 end
 
